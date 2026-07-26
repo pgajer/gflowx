@@ -3,7 +3,7 @@
 #' @description
 #' Convenience pipeline that combines:
 #' \itemize{
-#'   \item \code{gflow::build.iknn.graphs.and.selectk()}
+#'   \item \code{dgraphs::build.iknn.graphs.and.selectk()}
 #'   \item \code{grip::grip.layout}
 #'   \item \code{\link{fit.rdgraph.regression}}
 #' }
@@ -22,11 +22,11 @@
 #' @param X Numeric matrix-like object (samples in rows, features in columns).
 #' @param y Numeric response vector of length \code{nrow(X)} (binary allowed).
 #' @param k.min Integer minimum k passed to
-#'   \code{gflow::build.iknn.graphs.and.selectk()}.
+#'   \code{dgraphs::build.iknn.graphs.and.selectk()}.
 #' @param k.max Integer maximum k passed to
-#'   \code{gflow::build.iknn.graphs.and.selectk()}.
+#'   \code{dgraphs::build.iknn.graphs.and.selectk()}.
 #' @param build.args Named list passed to
-#'   \code{gflow::build.iknn.graphs.and.selectk()}.
+#'   \code{dgraphs::build.iknn.graphs.and.selectk()}.
 #'   \code{X}, \code{kmin}, and \code{kmax} are always supplied by this wrapper.
 #'   If \code{build.args$kmin}/\code{build.args$kmax} are provided, top-level
 #'   \code{k.min}/\code{k.max} take precedence.
@@ -68,7 +68,7 @@
 #' @return A list with:
 #' \itemize{
 #'   \item \code{graphs}: full output of
-#'         \code{gflow::build.iknn.graphs.and.selectk()}
+#'         \code{dgraphs::build.iknn.graphs.and.selectk()}
 #'   \item \code{connectivity}: connectivity table
 #'   \item \code{k.values}: k sequence
 #'   \item \code{selected.k}, \code{selected.k.index}
@@ -129,7 +129,7 @@ iknn.graph.response.pipeline <- function(
         install_hint = "Install it first (e.g. remotes::install_github('pgajer/grip'))."
     )
 
-    get.fn <- function(name) {
+    get.gflow.fn <- function(name) {
         if (exists(name, mode = "function", inherits = TRUE)) {
             return(get(name, mode = "function", inherits = TRUE))
         }
@@ -140,12 +140,12 @@ iknn.graph.response.pipeline <- function(
         stop("Function not found: ", name)
     }
 
-    f.build <- get.fn("build.iknn.graphs.and.selectk")
-    f.cc <- get.fn("graph.connected.components")
+    f.build <- dgraphs::build.iknn.graphs.and.selectk
+    f.cc <- dgraphs::graph.connected.components
     f.fit <- fit.rdgraph.regression
-    f.plot.plain <- get.fn("plot3D.plain.widget")
-    f.plot.cltrs <- get.fn("plot3D.cltrs.widget")
-    f.plot.cont <- get.fn("plot3D.cont.widget")
+    f.plot.plain <- get.gflow.fn("plot3D.plain.widget")
+    f.plot.cltrs <- get.gflow.fn("plot3D.cltrs.widget")
+    f.plot.cont <- get.gflow.fn("plot3D.cont.widget")
     multi.comp.plot <- match.arg(multi.comp.plot)
 
     if (!is.matrix(X)) {

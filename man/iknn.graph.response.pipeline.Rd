@@ -33,13 +33,13 @@ iknn.graph.response.pipeline(
 \item{y}{Numeric response vector of length \code{nrow(X)} (binary allowed).}
 
 \item{k.min}{Integer minimum k passed to
-\code{gflow::build.iknn.graphs.and.selectk()}.}
+\code{dgraphs::build.iknn.graphs.and.selectk()}.}
 
 \item{k.max}{Integer maximum k passed to
-\code{gflow::build.iknn.graphs.and.selectk()}.}
+\code{dgraphs::build.iknn.graphs.and.selectk()}.}
 
 \item{build.args}{Named list passed to
-\code{gflow::build.iknn.graphs.and.selectk()}.
+\code{dgraphs::build.iknn.graphs.and.selectk()}.
 \code{X}, \code{kmin}, and \code{kmax} are always supplied by this wrapper.
 If \code{build.args$kmin}/\code{build.args$kmax} are provided, top-level
 \code{k.min}/\code{k.max} take precedence.}
@@ -95,7 +95,7 @@ created \code{Rplots.pdf} in the working directory.}
 A list with:
 \itemize{
 \item \code{graphs}: full output of
-\code{gflow::build.iknn.graphs.and.selectk()}
+\code{dgraphs::build.iknn.graphs.and.selectk()}
 \item \code{connectivity}: connectivity table
 \item \code{k.values}: k sequence
 \item \code{selected.k}, \code{selected.k.index}
@@ -110,7 +110,7 @@ A list with:
 \description{
 Convenience pipeline that combines:
 \itemize{
-\item \code{gflow::build.iknn.graphs.and.selectk()}
+\item \code{dgraphs::build.iknn.graphs.and.selectk()}
 \item \code{grip::grip.layout}
 \item \code{\link{fit.rdgraph.regression}}
 }
