@@ -12,7 +12,7 @@ meanshift.data.smoother(
   step.size = 0.1,
   ikernel = 1,
   dist.normalization.factor = 1.01,
-  method = "precomputed",
+  method = "basic",
   momentum = 0.9,
   increase.factor = 1.2,
   decrease.factor = 0.5,

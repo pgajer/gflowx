@@ -1,6 +1,4 @@
-test_that("mean-shift smoother delegates to the legacy native backend", {
-    skip_if_not_installed("gflow")
-
+test_that("mean-shift smoother uses the local archived native backend", {
     set.seed(1)
     X <- matrix(runif(24), ncol = 2)
 

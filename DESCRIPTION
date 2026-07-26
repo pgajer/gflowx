@@ -1,14 +1,15 @@
 Package: gflowx
-Title: Experimental Extensions and Legacy Comparators for gflow
+Title: Archived Geometric Smoothing and Conditional Expectation Methods
 Version: 0.0.0.9000
 Authors@R: c(
-    person("Peter", "Gajer", role = c("aut", "cre"),
-           email = "pgajer@example.com")
+    person("Pawel", "Gajer", role = c("aut", "cre"),
+           email = "pgajer@gmail.com")
     )
-Description: Experimental and legacy geometric regression tools split out from
-    gflow so that the core package can remain focused. The initial package
-    provides bridge exports for rdgraph regression workflows while their native
-    implementation is being extracted from gflow.
+Description: Installable archive of retired geometric smoothing, graph
+    regression, and conditional expectation methods formerly shipped in
+    'gflow'. The implementations are preserved for reproducibility and
+    comparison, while graph construction is delegated to 'dgraphs'. These
+    methods are not under active methodological development.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -16,9 +17,20 @@ RoxygenNote: 7.3.3
 Depends:
     R (>= 4.1.0)
 Imports:
-    gflow
+    dgraphs,
+    grDevices,
+    graphics,
+    Rcpp,
+    stats,
+    utils
+LinkingTo:
+    Rcpp
 Suggests:
     doParallel,
     foreach,
+    gflow,
+    grip,
+    Matrix,
+    pkgload,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

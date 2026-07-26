@@ -139,7 +139,7 @@ meanshift.data.smoother <- function(X,
                                     step.size = 0.1,
                                     ikernel = 1,
                                     dist.normalization.factor = 1.01,
-                                    method = "precomputed",
+                                    method = "basic",
                                     momentum = 0.9,
                                     increase.factor = 1.2,
                                     decrease.factor = 0.5,
@@ -164,11 +164,6 @@ meanshift.data.smoother <- function(X,
 
     if (!is.double(X)) {
         storage.mode(X) <- "double"
-    }
-
-    if (!requireNamespace("gflow", quietly = TRUE)) {
-        stop("meanshift.data.smoother() currently requires gflow for its ",
-             "native mean-shift backend.", call. = FALSE)
     }
 
     n.points <- nrow(X)
@@ -300,7 +295,7 @@ meanshift.data.smoother <- function(X,
                         as.double(momentum),
                         as.double(increase.factor),
                         as.double(decrease.factor),
-                        PACKAGE = "gflow")
+                        PACKAGE = "gflowx")
 
     } else if (method.num == 1) {
         ## Precomputed method
@@ -324,7 +319,7 @@ meanshift.data.smoother <- function(X,
                        as.integer(ikernel),
                        as.double(dist.normalization.factor),
                        as.logical(average.direction.only),
-                       PACKAGE = "gflow")
+                       PACKAGE = "gflowx")
     } else if (method.num %in% c(4, 5)) {
         # Adaptive methods
         result <- .Call("S_mean_shift_data_smoother_adaptive",
@@ -336,7 +331,7 @@ meanshift.data.smoother <- function(X,
                        as.integer(ikernel),
                        as.double(dist.normalization.factor),
                        as.logical(average.direction.only),
-                       PACKAGE = "gflow")
+                       PACKAGE = "gflowx")
     } else if (method.num == 6) {
         ## KNN adaptive method
         stop("knn_adaptive_mean_shift_smoother not implemented yet")
@@ -634,12 +629,8 @@ adaptive_mean_shift_gfa <- function(
   increase_factor = 1.2,
   decrease_factor = 0.5
 ) {
-  if (!requireNamespace("gflow", quietly = TRUE)) {
-    stop("adaptive_mean_shift_gfa() currently requires gflow for its native ",
-         "mean-shift backend.", call. = FALSE)
-  }
   X <- as.matrix(X)
-  utils::getFromNamespace("rcpp_adaptive_mean_shift_gfa", "gflow")(
+  rcpp_adaptive_mean_shift_gfa(
     X, as.integer(k), as.integer(density_k), as.integer(n_steps),
     as.numeric(initial_step_size),
     as.integer(ikernel), as.numeric(dist_normalization_factor),
@@ -677,12 +668,8 @@ knn_adaptive_mean_shift_gfa <- function(
   dist_normalization_factor = 1.01,
   average_direction_only = FALSE
 ) {
-  if (!requireNamespace("gflow", quietly = TRUE)) {
-    stop("knn_adaptive_mean_shift_gfa() currently requires gflow for its ",
-         "native mean-shift backend.", call. = FALSE)
-  }
   X <- as.matrix(X)
-  utils::getFromNamespace("rcpp_knn_adaptive_mean_shift_gfa", "gflow")(
+  rcpp_knn_adaptive_mean_shift_gfa(
     X, as.integer(k), as.integer(density_k), as.integer(n_steps),
     as.numeric(step_size),
     as.integer(ikernel), as.numeric(dist_normalization_factor),

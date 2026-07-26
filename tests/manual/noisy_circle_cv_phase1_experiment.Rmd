@@ -1,0 +1,161 @@
+---
+title: "Noisy Circle CV Denoising: Phase 1 Design"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+## Purpose
+
+This document is the design and execution log for the first statistically-defensible
+cross-validation (CV) denoising experiment on noisy-circle synthetic data.
+
+This file is design-focused. Result analysis should be modularized into separate
+Rmd files that consume run outputs.
+
+## Statistical Target
+
+We evaluate denoising quality using held-out-entry prediction risk on `X`:
+
+\[
+\mathcal{L}(\theta) = \frac{1}{|H|}\sum_{(i,j)\in H}
+\left(\frac{X_{ij} - \hat X_{ij}^{(\theta)}}{s_j}\right)^2,
+\]
+
+where `H` are held-out entries and `s_j` is training-fold column scale
+(MAD with SD fallback).
+
+Primary score: scaled MSE.  
+Secondary score: unscaled MSE.
+
+## Experimental Design (Phase 1)
+
+### Synthetic Data
+
+- Generator: `generate.circle.data(...)`
+- `n = 250`, `radius = 1`
+- Noise model: Gaussian radial noise (`noise.type = "normal"`)
+- Noise levels (`sigma`): `0.02, 0.05, 0.10, 0.20`
+- Replicates per sigma: `30`
+- Sampling type: `"random"`
+
+### CV Protocol
+
+- 5-fold CV over rows
+- 5 repeated fold assignments per replicate
+- For each split, training rows are passed as `y.vertices` in refit
+  (semi-supervised masked refit), predictions evaluated on held-out rows.
+
+### Tuned Hyperparameters (Exact Grids)
+
+- `k`: `5, 7, 9, ..., 35` (step 2)
+- `n.eigenpairs`: `25, 50, 100`
+- `eta` (heat-kernel smoothing scale): 12 log-spaced values from `1e-3` to `2.0`
+
+### Fixed Settings
+
+- `filter.type = "heat_kernel"`
+- `use.counting.measure = TRUE`
+- `response.penalty.exp = 0`
+- `t.scale.factor = 0.5`
+- `beta.coef.factor = 0.1`
+- `max.iterations = 8`
+- graph-pruning controls:
+  - `max.path.edge.ratio.deviation.thld = 0.1`
+  - `path.edge.ratio.percentile = 0.5`
+  - `threshold.percentile = 0`
+- connectivity pre-screen:
+  - for each replicate, `create.iknn.graphs()` is used to identify disconnected
+    `k` values over the full `k` grid
+  - disconnected `k` values are skipped before fitting and logged as
+    `status = "graph_disconnected"` in `cv_fold_scores.csv`
+
+### Selection Rule
+
+Per replicate:
+
+1. Select `min` candidate by mean scaled CV loss.
+2. Select `one_se` candidate: from candidates within one SE of `min`,
+   choose simpler by ordering:
+   - lower `n.eigenpairs`,
+   - higher `k`,
+   - higher `eta`.
+
+### Oracle/Diagnostic Metrics (not used for selection)
+
+- RMSE to clean coordinates (`rmse_xy_hat`)
+- radial RMSE (`rmse_rad_hat`)
+- variance shrinkage ratio (`var_ratio_mean`)
+
+Baselines:
+
+- observed/no smoothing
+- `data.smoother()` default baseline
+
+## Implementation
+
+Runner script:
+
+- `tests/manual/denoising_noisy_circle_cv_phase1.R`
+
+The script writes timestamped progress logs and structured artifacts.
+
+## Output Structure
+
+Each run writes to:
+
+- `tests/manual/results/noisy_circle_cv_phase1/<run_id>/`
+
+Subfolders:
+
+- `logs/`
+- `tables/`
+- `checkpoints/`
+- `artifacts/`
+- `config/`
+
+Key files:
+
+- `logs/progress.log`
+- `tables/cv_fold_scores.csv`
+- `tables/cv_candidate_summary.csv`
+- `tables/selection_by_replicate.csv`
+- `tables/oracle_metrics_by_replicate.csv`
+- `tables/selected_params_by_sigma.csv` (after run)
+- `config/experiment_config.rds`
+
+## Current Run
+
+Active full run:
+
+- `run_id = phase1_full_20260218_1045`
+- output root:
+  `tests/manual/results/noisy_circle_cv_phase1/phase1_full_20260218_1045`
+
+Monitor command (from repo root):
+
+```bash
+tail -f tests/manual/results/noisy_circle_cv_phase1/phase1_full_20260218_1045/logs/progress.log
+```
+
+## Modular Documentation Plan
+
+Recommended structure:
+
+1. Keep this file as stable design/protocol.
+2. Add separate results Rmds, e.g.:
+   - `tests/manual/noisy_circle_cv_phase1_results_<run_id>.Rmd`
+3. Optionally add a compact synthesis doc comparing multiple runs.
+
+This keeps design immutable while allowing independent, versioned results analyses.
+
+## Result Notes (to fill after run)
+
+- Run completion time:
+- Any failed candidates:
+- Stability of selected parameters by sigma:
+- Baseline vs CV-selected comparisons:
+- Decision for phase-2 design:

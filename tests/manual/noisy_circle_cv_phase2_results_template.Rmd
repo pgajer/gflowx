@@ -1,0 +1,649 @@
+---
+title: "Noisy Circle CV Denoising: Phase 2 Results"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+suppressPackageStartupMessages({
+  library(data.table)
+})
+
+find_repo_root <- function(start = getwd()) {
+  cur <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(cur, "DESCRIPTION"))) return(cur)
+    parent <- dirname(cur)
+    if (identical(parent, cur)) stop("Could not locate repository root.")
+    cur <- parent
+  }
+}
+
+repo_root <- find_repo_root()
+results_base <- file.path(repo_root, "tests", "manual", "results", "noisy_circle_cv_phase2")
+run_dirs <- if (dir.exists(results_base)) list.dirs(results_base, recursive = FALSE, full.names = TRUE) else character(0)
+if (length(run_dirs) == 0) stop("No phase-2 run directories found under: ", results_base)
+run_info <- file.info(run_dirs)
+run_dir <- run_dirs[which.max(run_info$mtime)]
+run_id <- basename(run_dir)
+analysis_dir <- file.path(run_dir, "analysis")
+fig_dir <- file.path(analysis_dir, "figures")
+tab_dir <- file.path(analysis_dir, "tables")
+
+read_tbl <- function(name) {
+  p <- file.path(tab_dir, name)
+  if (!file.exists(p)) return(data.table())
+  fread(p)
+}
+
+include_fig <- function(name) {
+  p <- file.path(fig_dir, name)
+  if (!file.exists(p)) {
+    cat(sprintf("**Figure missing:** `%s`\n\n", name))
+    return(NULL)
+  }
+  knitr::include_graphics(p)
+}
+
+fmt_int <- function(x) {
+  if (!is.finite(x)) return("NA")
+  format(round(x), big.mark = ",", trim = TRUE, scientific = FALSE)
+}
+
+fmt_pct <- function(x, digits = 1) {
+  if (!is.finite(x)) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x)
+}
+
+fmt_num <- function(x, digits = 4) {
+  if (!is.finite(x)) return("NA")
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+completion <- read_tbl("completion_summary.csv")
+status_counts <- read_tbl("status_counts.csv")
+failure_tbl <- read_tbl("failure_by_dgp_sigma_k_eigenpairs.csv")
+lcc_tbl <- read_tbl("lcc_policy_utilization_by_dgp_sigma_k.csv")
+risk_tbl <- read_tbl("risk_landscape_mean_by_dgp_sigma.csv")
+sel_k_tbl <- read_tbl("selection_freq_k_by_dgp_sigma.csv")
+sel_eta_tbl <- read_tbl("selection_freq_eta_by_dgp_sigma.csv")
+tradeoff_tbl <- read_tbl("one_se_vs_min_deltas_by_dgp_sigma.csv")
+oracle_tbl <- read_tbl("oracle_summary_by_dgp_sigma_method.csv")
+win_tbl <- read_tbl("smooth_vs_nosmooth_win_rate_by_dgp_sigma_method.csv")
+corr_tbl <- read_tbl("cv_vs_oracle_correlation_by_dgp_sigma.csv")
+frontier_tbl <- read_tbl("oversmoothing_frontier_points_by_dgp_sigma.csv")
+rank_tbl <- read_tbl("method_rank_by_dgp_sigma.csv")
+delta_mean_tbl <- read_tbl("mean_delta_vs_observed_by_dgp_sigma_method.csv")
+classical_sel_tbl <- read_tbl("classical_cv_selection_by_replicate.csv")
+classical_freq_tbl <- read_tbl("classical_selection_freq_by_dgp_sigma_method.csv")
+
+classical_methods <- c("classical_knn_mean_cv", "classical_gaussian_kernel_cv", "classical_circular_kernel_cv")
+realistic_sigma <- c(0.05, 0.10, 0.20, 0.30)
+
+comp_frac <- if (nrow(completion) > 0) completion$completion_fraction[1] else NA_real_
+obs_rows <- if (nrow(completion) > 0) completion$observed_rows[1] else NA_real_
+exp_rows <- if (nrow(completion) > 0) completion$expected_total_rows[1] else NA_real_
+non_ok_rows <- if (nrow(status_counts) > 0) status_counts[status != "ok", sum(N)] else NA_real_
+if (!is.finite(non_ok_rows)) non_ok_rows <- 0
+
+worst_fail <- if (nrow(failure_tbl) > 0) failure_tbl[order(-fail_rate)][1] else data.table()
+
+lcc_summary <- if (nrow(lcc_tbl) > 0) {
+  lcc_tbl[, .(
+    modeled_fraction_mean = weighted.mean(avg_modeled_fraction, pmax(n, 1), na.rm = TRUE),
+    lcc_policy_share_mean = weighted.mean(lcc_policy_share, pmax(n, 1), na.rm = TRUE),
+    min_modeled_fraction = min(avg_modeled_fraction, na.rm = TRUE)
+  )]
+} else data.table()
+
+best_risk <- if (nrow(risk_tbl) > 0) {
+  risk_tbl[order(scaled_mse_mean_avg), .SD[1], by = .(dgp_id, sigma)]
+} else data.table()
+
+sel_k_mode <- if (nrow(sel_k_tbl) > 0) {
+  sel_k_tbl[selected == "min"][order(-N), .SD[1], by = .(dgp_id, sigma)]
+} else data.table()
+
+sel_eta_mode <- if (nrow(sel_eta_tbl) > 0) {
+  sel_eta_tbl[selected == "min"][order(-N), .SD[1], by = .(dgp_id, sigma)]
+} else data.table()
+
+tradeoff_summary <- if (nrow(tradeoff_tbl) > 0) {
+  tradeoff_tbl[, .(
+    one_se_simpler_rate = mean((delta_n_eigenpairs < 0) | (delta_k > 0), na.rm = TRUE),
+    one_se_small_penalty_rate = mean(delta_scaled_mse <= 0.002, na.rm = TRUE),
+    median_delta_scaled_mse = median(delta_scaled_mse, na.rm = TRUE)
+  )]
+} else data.table()
+
+oracle_best <- if (nrow(oracle_tbl) > 0) {
+  oracle_tbl[order(rmse_xy_hat_mean), .SD[1], by = .(dgp_id, sigma)]
+} else data.table()
+
+oracle_overall_realistic <- if (nrow(oracle_tbl) > 0) {
+  oracle_tbl[sigma %in% realistic_sigma, .(mean_rmse = mean(rmse_xy_hat_mean, na.rm = TRUE)), by = method][order(mean_rmse)]
+} else data.table()
+
+classical_overall_realistic <- if (nrow(oracle_tbl) > 0) {
+  oracle_tbl[method %in% classical_methods & sigma %in% realistic_sigma,
+             .(mean_rmse = mean(rmse_xy_hat_mean, na.rm = TRUE)), by = method][order(mean_rmse)]
+} else data.table()
+
+win_overall <- if (nrow(win_tbl) > 0) {
+  win_tbl[, .(
+    mean_win_rate = mean(win_rate, na.rm = TRUE),
+    median_win_rate = median(win_rate, na.rm = TRUE)
+  ), by = method][order(-mean_win_rate)]
+} else data.table()
+
+corr_overall <- if (nrow(corr_tbl) > 0) {
+  corr_tbl[, .(
+    mean_spearman = mean(spearman_rho, na.rm = TRUE),
+    median_spearman = median(spearman_rho, na.rm = TRUE)
+  ), by = selected]
+} else data.table()
+
+frontier_summary <- if (nrow(frontier_tbl) > 0) {
+  frontier_tbl[, .(
+    median_improvement = median(improvement_rmse_xy, na.rm = TRUE),
+    median_var_ratio = median(var_ratio_mean, na.rm = TRUE)
+  ), by = method][order(-median_improvement)]
+} else data.table()
+
+rank_winners <- if (nrow(rank_tbl) > 0) {
+  rank_tbl[rank_rmse_xy == 1, .N, by = method][order(-N)]
+} else data.table()
+
+delta_mean_overall <- if (nrow(delta_mean_tbl) > 0) {
+  delta_mean_tbl[, .(
+    mean_delta = mean(mean_delta_rmse_xy, na.rm = TRUE),
+    mean_win_rate = mean(win_rate, na.rm = TRUE)
+  ), by = method][order(mean_delta)]
+} else data.table()
+
+classical_mode <- if (nrow(classical_freq_tbl) > 0) {
+  classical_freq_tbl[order(-N, param_value), .SD[1], by = .(method, dgp_id, sigma)]
+} else data.table()
+```
+
+## Run Context
+
+- `run_id`: `r run_id`
+- run directory: `r run_dir`
+- analysis directory: `r analysis_dir`
+- completion: `r fmt_int(obs_rows)` / `r fmt_int(exp_rows)` rows (`r fmt_pct(comp_frac, 2)`)
+
+## Key Findings
+
+```{r overall-findings, results='asis'}
+if (nrow(oracle_overall_realistic) > 0) {
+  best_method <- oracle_overall_realistic$method[1]
+  best_rmse <- oracle_overall_realistic$mean_rmse[1]
+  cat(sprintf("- Best mean oracle method on realistic sigma (0.05-0.30): **%s** (mean RMSE = **%s**).\n",
+              best_method, fmt_num(best_rmse, 4)))
+}
+if (nrow(classical_overall_realistic) > 0) {
+  best_classical <- classical_overall_realistic$method[1]
+  best_classical_rmse <- classical_overall_realistic$mean_rmse[1]
+  cat(sprintf("- Best classical baseline on realistic sigma (0.05-0.30): **%s** (mean RMSE = **%s**).\n",
+              best_classical, fmt_num(best_classical_rmse, 4)))
+}
+if (nrow(win_overall) > 0) {
+  top_win <- win_overall[1]
+  cat(sprintf("- Highest average win-rate vs no smoothing: **%s** at **%s**.\n",
+              top_win$method, fmt_pct(top_win$mean_win_rate, 1)))
+}
+if (nrow(corr_overall) > 0) {
+  cor_txt <- paste(sprintf(
+    "%s: %s",
+    corr_overall$selected,
+    ifelse(is.finite(corr_overall$mean_spearman), sprintf("%.3f", corr_overall$mean_spearman), "NA")
+  ), collapse = "; ")
+  cat(sprintf("- CV vs oracle mean Spearman correlation by selection rule: %s.\n", cor_txt))
+}
+```
+
+## Method Labels and Definitions
+
+### What we are looking at
+
+This section maps each method label used in plots/tables to the actual estimation procedure.
+
+- `observed_no_smoothing`
+  - Identity baseline: no denoising, `X_hat = X_observed`.
+
+- `data_smoother_default`
+  - Direct call to `data.smoother(...)` with fixed defaults used in this experiment (`proxy.response='pc1'`, `n.eigenpairs=50`, `kmin=min(k_grid)`, `kmax=max(k_grid)`, fixed filter settings).
+  - This is **not** selected by the outer CV grid used for `cv_min/cv_one_se`; it is a reference implementation baseline.
+
+- `cv_min`
+  - Graph-smoother model family (`fit.rdgraph.regression` + heat-kernel filtering).
+  - Hyperparameters searched on the experiment grid: `(k, n.eigenpairs, eta)`.
+  - Selection rule: choose the candidate with the **minimum** mean CV scaled MSE.
+
+- `cv_one_se`
+  - Same graph-smoother candidate grid as `cv_min`.
+  - Selection rule: pick from candidates with CV loss within one standard error of the minimum, then choose the simpler candidate using the script tie-break (`n.eigenpairs` smaller first, then larger `k`, then larger `eta`).
+  - In practice this is the conservative/regularized alternative to `cv_min`.
+
+- `classical_knn_mean_cv`
+  - Non-graph baseline: kNN averaging denoiser.
+  - CV-selected neighbor count from the classical grid.
+
+- `classical_gaussian_kernel_cv`
+  - Non-graph baseline: Euclidean Gaussian kernel smoother.
+  - CV-selected bandwidth multiplier from the classical grid.
+
+- `classical_circular_kernel_cv`
+  - Structure-aware baseline: Gaussian kernel smoothing on angular distance around the circle.
+  - Uses explicit circular geometry and should be interpreted as a favorable synthetic-data baseline, not a general-purpose default.
+
+### Key message
+
+`cv_min` and `cv_one_se` are both CV-selected graph smoothers from the same candidate grid; `data_smoother_default` is a fixed-reference smoother call and is not chosen by the outer CV search.
+
+## Figure 01: Completion and Status
+
+### What we are looking at
+
+This plot shows whether the run finished and how many rows are `ok` vs non-`ok` statuses.
+
+```{r fig01, out.width='100%'}
+include_fig("01_completion_status.png")
+```
+
+### Interpretation
+
+```{r fig01-text, results='asis'}
+cat(sprintf("- Completed **%s** of **%s** planned rows (**%s**).\n", fmt_int(obs_rows), fmt_int(exp_rows), fmt_pct(comp_frac, 2)))
+cat(sprintf("- Non-`ok` rows: **%s**.\n", fmt_int(non_ok_rows)))
+```
+
+### Key message
+
+The run is fully complete, so parameter and method comparisons are final for this phase-2 pilot.
+
+## Figure 02: Failure Rate vs k
+
+### What we are looking at
+
+Failure rates across `k`, faceted by DGP, sigma, and eigenpair count.
+
+```{r fig02, out.width='100%'}
+include_fig("02_failrate_vs_k_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig02-text, results='asis'}
+if (nrow(worst_fail) > 0) {
+  cat(sprintf("- Worst observed failure regime: dgp=%s, sigma=%s, k=%s, n.eigenpairs=%s with fail-rate **%s**.\n",
+              worst_fail$dgp_id, fmt_num(worst_fail$sigma, 2), fmt_int(worst_fail$k),
+              fmt_int(worst_fail$n_eigenpairs), fmt_pct(worst_fail$fail_rate, 1)))
+}
+```
+
+### Key message
+
+Most failure pressure remains concentrated in disconnected low-`k` regimes.
+
+## Figure 03: Modeled Fraction Heatmap
+
+### What we are looking at
+
+How much of held-out data was actually smoothed when LCC policy is used (1.0 means full coverage).
+
+```{r fig03, out.width='100%'}
+include_fig("03_modeled_fraction_heatmap.png")
+```
+
+### Interpretation
+
+```{r fig03-text, results='asis'}
+if (nrow(lcc_summary) > 0) {
+  cat(sprintf("- Weighted mean modeled fraction: **%s**.\n", fmt_pct(lcc_summary$modeled_fraction_mean[1], 1)))
+  cat(sprintf("- Weighted share of `largest_component` policy usage: **%s**.\n", fmt_pct(lcc_summary$lcc_policy_share_mean[1], 1)))
+  cat(sprintf("- Minimum modeled fraction across (dgp, sigma, k): **%s**.\n", fmt_pct(lcc_summary$min_modeled_fraction[1], 1)))
+}
+```
+
+### Key message
+
+Partial-coverage smoothing is present and should be read jointly with win-rate/oracle results.
+
+## Figure 04: CV Risk Landscape
+
+### What we are looking at
+
+Mean CV loss surfaces over `(k, eta)` by DGP/sigma/eigenpairs.
+
+```{r fig04, out.width='100%'}
+include_fig("04_cv_surface_heatmaps_by_dgp.png")
+```
+
+### Interpretation
+
+```{r fig04-text, results='asis'}
+if (nrow(best_risk) > 0) {
+  show_n <- min(6L, nrow(best_risk))
+  top_txt <- best_risk[1:show_n, sprintf("(%s, sigma=%.2f): k=%d, eig=%d, eta=%.4f",
+                                         dgp_id, sigma, k, n_eigenpairs, eta)]
+  cat("- Example best-risk settings by scenario:\n")
+  for (x in top_txt) cat(sprintf("  - %s\n", x))
+}
+```
+
+### Key message
+
+Best settings vary by regime, supporting scenario-specific rather than one-size-fits-all tuning.
+
+## Figure 05: Selected k Distribution
+
+### What we are looking at
+
+Distribution of selected `k` values across replicates.
+
+```{r fig05, out.width='100%'}
+include_fig("05_selected_k_distribution_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig05-text, results='asis'}
+if (nrow(sel_k_mode) > 0) {
+  cat("- Modal `k` (min rule) examples:\n")
+  for (i in seq_len(min(8L, nrow(sel_k_mode)))) {
+    r <- sel_k_mode[i]
+    cat(sprintf("  - %s, sigma=%s: k=%s (count=%s)\n",
+                r$dgp_id, fmt_num(r$sigma, 2), fmt_int(r$k), fmt_int(r$N)))
+  }
+}
+```
+
+### Key message
+
+Selection is not random; stable modal `k` values appear within each regime.
+
+## Figure 06: Selected eta Distribution
+
+### What we are looking at
+
+Distribution of selected smoothing scale `eta` across replicates.
+
+```{r fig06, out.width='100%'}
+include_fig("06_selected_eta_distribution_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig06-text, results='asis'}
+if (nrow(sel_eta_mode) > 0) {
+  cat("- Modal `eta` (min rule) examples:\n")
+  for (i in seq_len(min(8L, nrow(sel_eta_mode)))) {
+    r <- sel_eta_mode[i]
+    cat(sprintf("  - %s, sigma=%s: eta=%s (count=%s)\n",
+                r$dgp_id, fmt_num(r$sigma, 2), fmt_num(r$eta, 4), fmt_int(r$N)))
+  }
+}
+```
+
+### Key message
+
+Selected smoothing strength changes by regime and should be reported with sigma/DGP context.
+
+## Figure 07: One-SE vs Min Tradeoff
+
+### What we are looking at
+
+How much CV loss changes when choosing simpler one-SE models over min-risk models.
+
+```{r fig07, out.width='100%'}
+include_fig("07_one_se_vs_min_tradeoff_by_dgp.png")
+```
+
+### Interpretation
+
+```{r fig07-text, results='asis'}
+if (nrow(tradeoff_summary) > 0) {
+  cat(sprintf("- One-SE simpler-model rate: **%s**.\n", fmt_pct(tradeoff_summary$one_se_simpler_rate[1], 1)))
+  cat(sprintf("- One-SE small-penalty rate (delta scaled MSE <= 0.002): **%s**.\n", fmt_pct(tradeoff_summary$one_se_small_penalty_rate[1], 1)))
+  cat(sprintf("- Median delta scaled MSE (one_se - min): **%s**.\n", fmt_num(tradeoff_summary$median_delta_scaled_mse[1], 5)))
+}
+```
+
+### Key message
+
+One-SE often reduces complexity with limited CV-risk penalty.
+
+## Figure 08: Oracle RMSE(x,y) by Method
+
+### What we are looking at
+
+Oracle error comparison for observed baseline, graph-based methods, and classical CV baselines.
+
+```{r fig08, out.width='100%'}
+include_fig("08_oracle_rmse_xy_by_method_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig08-text, results='asis'}
+if (nrow(oracle_best) > 0) {
+  obs_best_n <- oracle_best[method == "observed_no_smoothing", .N]
+  cat(sprintf("- In **%s / %s** (dgp, sigma) panels, no-smoothing has the best mean oracle RMSE.\n",
+              fmt_int(obs_best_n), fmt_int(nrow(oracle_best))))
+
+  if (nrow(oracle_best[sigma == 0.02]) > 0) {
+    obs_best_002 <- oracle_best[sigma == 0.02 & method == "observed_no_smoothing", .N]
+    tot_002 <- oracle_best[sigma == 0.02, .N]
+    cat(sprintf("- At sigma=0.02, no-smoothing is best in **%s / %s** panels.\n",
+                fmt_int(obs_best_002), fmt_int(tot_002)))
+  }
+}
+```
+
+### Key message
+
+Smoothing is not universally better; regime-dependent comparison to no-smoothing is essential.
+
+## Figure 09: Delta vs Observed Baseline
+
+### What we are looking at
+
+Distribution of RMSE deltas relative to no smoothing (negative means improvement).
+
+```{r fig09, out.width='100%'}
+include_fig("09_delta_vs_observed_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig09-text, results='asis'}
+if (nrow(win_overall) > 0) {
+  cat("- Mean win-rates vs no smoothing by method:\n")
+  for (i in seq_len(nrow(win_overall))) {
+    r <- win_overall[i]
+    cat(sprintf("  - %s: mean=%s, median=%s\n",
+                r$method, fmt_pct(r$mean_win_rate, 1), fmt_pct(r$median_win_rate, 1)))
+  }
+}
+```
+
+### Key message
+
+Negative-delta dominance and >50% win-rate are the practical thresholds for recommending smoothing.
+
+## Figure 10: Smoothing Win Rate vs No Smoothing
+
+### What we are looking at
+
+Win-rate curves by sigma and DGP.
+
+```{r fig10, out.width='100%'}
+include_fig("10_smoothing_win_rate_vs_observed.png")
+```
+
+### Interpretation
+
+This plot directly answers the user-level decision question: smooth or not, by regime.
+
+### Key message
+
+Use smoothing where win-rate is consistently above 50%; otherwise default to no-smoothing.
+
+## Figure 11: CV vs Oracle Agreement
+
+### What we are looking at
+
+Correlation between selected CV loss and oracle error.
+
+```{r fig11, out.width='100%'}
+include_fig("11_cv_vs_oracle_scatter_by_dgp.png")
+```
+
+### Interpretation
+
+```{r fig11-text, results='asis'}
+if (nrow(corr_overall) > 0) {
+  cat("- Mean Spearman rho by selection rule:\n")
+  for (i in seq_len(nrow(corr_overall))) {
+    r <- corr_overall[i]
+    cat(sprintf("  - %s: mean=%s, median=%s\n",
+                r$selected, fmt_num(r$mean_spearman, 3), fmt_num(r$median_spearman, 3)))
+  }
+}
+```
+
+### Key message
+
+Positive CV-oracle association supports CV risk as a defensible proxy objective.
+
+## Figure 12: Oversmoothing Frontier
+
+### What we are looking at
+
+Tradeoff between variance shrinkage and oracle improvement.
+
+```{r fig12, out.width='100%'}
+include_fig("12_oversmoothing_frontier_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig12-text, results='asis'}
+if (nrow(frontier_summary) > 0) {
+  cat("- Median frontier summary by method:\n")
+  for (i in seq_len(nrow(frontier_summary))) {
+    r <- frontier_summary[i]
+    cat(sprintf("  - %s: median improvement=%s, median var_ratio=%s\n",
+                r$method, fmt_num(r$median_improvement, 4), fmt_num(r$median_var_ratio, 4)))
+  }
+}
+```
+
+### Key message
+
+Preferred regimes improve oracle RMSE while keeping variance shrinkage in a moderate range.
+
+## Figure 13: Method Rank Heatmap
+
+### What we are looking at
+
+For each `(DGP, sigma)` panel, this heatmap shows method rank by mean oracle RMSE (rank 1 is best).
+
+```{r fig13, out.width='100%'}
+include_fig("13_method_rank_heatmap_by_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig13-text, results='asis'}
+if (nrow(rank_winners) > 0) {
+  cat("- Count of rank-1 wins by method:\n")
+  for (i in seq_len(nrow(rank_winners))) {
+    r <- rank_winners[i]
+    cat(sprintf("  - %s: %s panels\n", r$method, fmt_int(r$N)))
+  }
+}
+```
+
+### Key message
+
+Ranking makes method dominance explicit by regime and shows whether classical baselines are competitive with graph-based CV choices.
+
+## Figure 14: Mean Delta Heatmap vs No Smoothing
+
+### What we are looking at
+
+This heatmap shows mean oracle RMSE delta vs observed/no-smoothing. Negative values are improvements.
+
+```{r fig14, out.width='100%'}
+include_fig("14_mean_delta_heatmap_by_method_dgp_sigma.png")
+```
+
+### Interpretation
+
+```{r fig14-text, results='asis'}
+if (nrow(delta_mean_overall) > 0) {
+  cat("- Overall mean delta and mean win-rate by method:\n")
+  for (i in seq_len(nrow(delta_mean_overall))) {
+    r <- delta_mean_overall[i]
+    cat(sprintf("  - %s: mean delta=%s, mean win-rate=%s\n",
+                r$method, fmt_num(r$mean_delta, 4), fmt_pct(r$mean_win_rate, 1)))
+  }
+}
+```
+
+### Key message
+
+Methods with consistently negative mean deltas and high win-rates are the robust smoothing choices; positive deltas indicate over-smoothing risk.
+
+## Figure 15: Classical Baseline Selection Frequency
+
+### What we are looking at
+
+Counts of CV-selected parameter values for each classical method by DGP and sigma.
+
+```{r fig15, out.width='100%'}
+include_fig("15_classical_selected_parameter_frequency.png")
+```
+
+### Interpretation
+
+```{r fig15-text, results='asis'}
+if (nrow(classical_mode) > 0) {
+  cat("- Modal selected parameter values (examples):\n")
+  for (i in seq_len(min(12L, nrow(classical_mode)))) {
+    r <- classical_mode[i]
+    cat(sprintf("  - %s | %s | sigma=%s: %s=%s (count=%s)\n",
+                r$method, r$dgp_id, fmt_num(r$sigma, 2),
+                r$param_name, fmt_num(r$param_value, 4), fmt_int(r$N)))
+  }
+}
+```
+
+### Key message
+
+Classical-method CV selections are structured by regime, not random; this supports reproducible baseline tuning.
+
+## Supporting Tables
+
+```{r tables-preview}
+if (nrow(oracle_tbl) > 0) {
+  cat("### Oracle Summary (first 15 rows)\n")
+  print(oracle_tbl[1:min(15L, .N)])
+}
+if (nrow(win_tbl) > 0) {
+  cat("\n### Win-Rate Summary (first 15 rows)\n")
+  print(win_tbl[1:min(15L, .N)])
+}
+if (nrow(rank_tbl) > 0) {
+  cat("\n### Method Rank Summary (first 15 rows)\n")
+  print(rank_tbl[1:min(15L, .N)])
+}
+```

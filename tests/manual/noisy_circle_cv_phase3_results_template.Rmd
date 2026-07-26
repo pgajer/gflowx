@@ -1,0 +1,292 @@
+---
+title: "Noisy Circle CV Denoising: Phase 3 High-Dimensional Results"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+suppressPackageStartupMessages({
+  library(data.table)
+})
+
+find_repo_root <- function(start = getwd()) {
+  cur <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(cur, "DESCRIPTION"))) return(cur)
+    parent <- dirname(cur)
+    if (identical(parent, cur)) stop("Could not locate repository root.")
+    cur <- parent
+  }
+}
+
+repo_root <- find_repo_root()
+results_base <- file.path(repo_root, "tests", "manual", "results", "noisy_circle_cv_phase3_highdim")
+run_dirs <- if (dir.exists(results_base)) list.dirs(results_base, recursive = FALSE, full.names = TRUE) else character(0)
+if (length(run_dirs) == 0) stop("No phase-3 run directories found under: ", results_base)
+run_info <- file.info(run_dirs)
+run_dir <- run_dirs[which.max(run_info$mtime)]
+run_id <- basename(run_dir)
+analysis_dir <- file.path(run_dir, "analysis")
+fig_dir <- file.path(analysis_dir, "figures")
+tab_dir <- file.path(analysis_dir, "tables")
+
+read_tbl <- function(name) {
+  p <- file.path(tab_dir, name)
+  if (!file.exists(p)) return(data.table())
+  fread(p)
+}
+
+include_fig <- function(name) {
+  p <- file.path(fig_dir, name)
+  if (!file.exists(p)) {
+    cat(sprintf("**Figure missing:** `%s`\n\n", name))
+    return(NULL)
+  }
+  knitr::include_graphics(p)
+}
+
+fmt_int <- function(x) {
+  if (!is.finite(x)) return("NA")
+  format(round(x), big.mark = ",", trim = TRUE, scientific = FALSE)
+}
+
+fmt_pct <- function(x, digits = 1) {
+  if (!is.finite(x)) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x)
+}
+
+fmt_num <- function(x, digits = 4) {
+  if (!is.finite(x)) return("NA")
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+completion <- read_tbl("completion_summary.csv")
+status_counts <- read_tbl("status_counts.csv")
+fail_tbl <- read_tbl("graph_failure_by_group_k_eigenpairs.csv")
+oracle_tbl <- read_tbl("oracle_summary_by_group_method.csv")
+win_tbl <- read_tbl("win_rate_vs_observed_by_group_method.csv")
+rt_tbl <- read_tbl("runtime_summary_by_group_method_group.csv")
+corr_tbl <- read_tbl("cv_vs_oracle_correlation_graph.csv")
+
+comp_frac <- if (nrow(completion) > 0) completion$completion_fraction[1] else NA_real_
+obs_rows <- if (nrow(completion) > 0) completion$observed_rows[1] else NA_real_
+exp_rows <- if (nrow(completion) > 0) completion$expected_total_rows[1] else NA_real_
+
+realistic_sigma <- c(0.05, 0.10, 0.20)
+
+overall_oracle <- if (nrow(oracle_tbl) > 0) {
+  oracle_tbl[sigma %in% realistic_sigma,
+             .(mean_rmse_latent = mean(rmse_latent_hat_mean, na.rm = TRUE)),
+             by = method][order(mean_rmse_latent)]
+} else data.table()
+
+overall_win <- if (nrow(win_tbl) > 0) {
+  win_tbl[, .(mean_win_latent = mean(win_rate_latent, na.rm = TRUE)), by = method][order(-mean_win_latent)]
+} else data.table()
+
+best_by_group <- if (nrow(oracle_tbl) > 0) {
+  oracle_tbl[order(rmse_latent_hat_mean), .SD[1], by = .(embedding_type, p, sigma)]
+} else data.table()
+```
+
+## Run Context
+
+- `run_id`: `r run_id`
+- run directory: `r run_dir`
+- analysis directory: `r analysis_dir`
+- completion: `r fmt_int(obs_rows)` / `r fmt_int(exp_rows)` rows (`r fmt_pct(comp_frac, 2)`)
+
+## Method Labels and Definitions
+
+- `observed_no_smoothing`
+  - Identity baseline (`X_hat = X_observed`).
+
+- `cv_min`
+  - Graph smoother (`fit.rdgraph.regression`) selected by minimum CV scaled MSE over `(k, n.eigenpairs, eta)`.
+
+- `cv_one_se`
+  - Same graph smoother grid as `cv_min`, with one-standard-error conservative selection rule.
+
+- `classical_knn_mean_cv`
+  - Classical kNN averaging denoiser with CV-selected `k`.
+
+- `classical_gaussian_kernel_cv`
+  - Classical Euclidean Gaussian kernel denoiser with CV-selected bandwidth multiplier.
+
+### Key message
+
+`cv_min` and `cv_one_se` are graph-based CV selections; classical baselines are tuned separately and used as strong non-graph comparators.
+
+## Key Findings
+
+```{r overall-findings, results='asis'}
+if (nrow(overall_oracle) > 0) {
+  top <- overall_oracle[1]
+  cat(sprintf("- Best mean latent oracle method: **%s** (mean RMSE = **%s**).\n",
+              top$method, fmt_num(top$mean_rmse_latent, 4)))
+}
+if (nrow(overall_win) > 0) {
+  topw <- overall_win[1]
+  cat(sprintf("- Highest mean latent win-rate vs no smoothing: **%s** at **%s**.\n",
+              topw$method, fmt_pct(topw$mean_win_latent, 1)))
+}
+if (nrow(best_by_group) > 0) {
+  counts <- best_by_group[, .N, by = method][order(-N)]
+  cat("- Group-level winner counts (embedding, p, sigma panels):\n")
+  for (i in seq_len(nrow(counts))) {
+    cat(sprintf("  - %s: %s panels\n", counts$method[i], fmt_int(counts$N[i])))
+  }
+}
+```
+
+## Figure 01: Completion and Status
+
+### What we are looking at
+
+Run completion and status breakdown.
+
+```{r fig01, out.width='100%'}
+include_fig("01_completion_status.png")
+```
+
+### Key message
+
+The snapshot is complete enough for comparative interpretation when completion is near 100%.
+
+## Figure 02: Graph Failure Rate vs k
+
+### What we are looking at
+
+Graph fit/refit failure rates by `k`, faceted by embedding, dimensionality, and eigenpairs.
+
+```{r fig02, out.width='100%'}
+include_fig("02_graph_failrate_vs_k.png")
+```
+
+### Key message
+
+If low-`k` failures dominate, conclusions about fixed `k=5` are fragile.
+
+## Figure 03: Graph Selected k Distribution
+
+### What we are looking at
+
+Distribution of selected graph `k` values across replicates.
+
+```{r fig03, out.width='100%'}
+include_fig("03_graph_selected_k_distribution.png")
+```
+
+### Key message
+
+This shows whether CV prefers a range of `k` or collapses to one extreme.
+
+## Figure 04: Oracle RMSE (All Dimensions)
+
+### What we are looking at
+
+Method comparison on full ambient-space oracle RMSE.
+
+```{r fig04, out.width='100%'}
+include_fig("04_oracle_rmse_all_by_method.png")
+```
+
+### Key message
+
+Use this view to assess overall denoising quality including ambient dimensions.
+
+## Figure 05: Oracle RMSE (Latent Signal)
+
+### What we are looking at
+
+Method comparison on latent 2D signal oracle RMSE.
+
+```{r fig05, out.width='100%'}
+include_fig("05_oracle_rmse_latent_by_method.png")
+```
+
+### Key message
+
+This is the primary signal-recovery metric for the high-dimensional circle DGP.
+
+## Figure 06: Win-Rate vs No Smoothing (Latent)
+
+### What we are looking at
+
+Frequency each method beats no-smoothing in latent RMSE.
+
+```{r fig06, out.width='100%'}
+include_fig("06_win_rate_vs_observed_latent.png")
+```
+
+### Key message
+
+Win-rate above 50% means a method usually helps relative to no-smoothing.
+
+## Figure 07: Mean Delta Heatmap (Latent)
+
+### What we are looking at
+
+Mean latent RMSE delta vs no-smoothing by method/group (negative is better).
+
+```{r fig07, out.width='100%'}
+include_fig("07_mean_delta_latent_heatmap.png")
+```
+
+### Key message
+
+Persistently negative cells indicate robust improvement over no-smoothing.
+
+## Figure 08: Runtime by Method Group
+
+### What we are looking at
+
+Elapsed time comparison for graph CV vs classical CV loops.
+
+```{r fig08, out.width='100%'}
+include_fig("08_runtime_by_method_group.png")
+```
+
+### Key message
+
+Use runtime to decide whether accuracy differences justify computational cost.
+
+## Figure 09: Graph CV Loss vs Oracle Latent Error
+
+### What we are looking at
+
+Association between selected graph CV score and latent oracle error.
+
+```{r fig09, out.width='100%'}
+include_fig("09_graph_cv_vs_oracle_latent.png")
+```
+
+### Key message
+
+Positive association supports CV risk as a defensible proxy objective.
+
+## Supporting Tables
+
+```{r tables-preview}
+if (nrow(oracle_tbl) > 0) {
+  cat("### Oracle Summary (first 15 rows)\n")
+  print(oracle_tbl[1:min(15L, .N)])
+}
+if (nrow(win_tbl) > 0) {
+  cat("\n### Win-Rate Summary (first 15 rows)\n")
+  print(win_tbl[1:min(15L, .N)])
+}
+if (nrow(rt_tbl) > 0) {
+  cat("\n### Runtime Summary (first 15 rows)\n")
+  print(rt_tbl[1:min(15L, .N)])
+}
+if (nrow(corr_tbl) > 0) {
+  cat("\n### CV vs Oracle Correlation (first 15 rows)\n")
+  print(corr_tbl[1:min(15L, .N)])
+}
+```

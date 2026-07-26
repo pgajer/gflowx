@@ -1,0 +1,155 @@
+---
+title: "Noisy Circle CV Denoising: Phase 2 Design"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+## Purpose
+
+Phase 2 extends the phase-1 CV denoising experiment to stress-test robustness and
+improve statistical defensibility under more realistic noise and graph-connectivity conditions.
+
+## Main Design Changes vs Phase 1
+
+1. Noise emphasis shifted to realistic levels (`0.05` to `0.30`) while keeping `0.02` as a sanity-check edge case.
+2. Added disconnected-graph handling policy:
+   - strict skip remains available,
+   - default policy allows largest connected component (LCC) modeling when LCC is sufficiently large.
+3. Added two robustness DGPs beyond baseline random noisy circle:
+   - nonuniform sampling on the circle,
+   - outlier-contaminated circle.
+
+## Statistical Target
+
+Primary model-selection target remains held-out scaled reconstruction risk:
+
+\[
+\mathcal{L}(\theta) = \frac{1}{|H|}\sum_{(i,j)\in H}
+\left(\frac{X_{ij} - \hat X_{ij}^{(\theta)}}{s_j}\right)^2
+\]
+
+with column scaling `s_j` estimated from training rows (MAD with SD fallback).
+
+## Synthetic Data (Phase 2)
+
+### DGP grid
+
+- `circle_random`: baseline random-angle noisy circle.
+- `circle_nonuniform`: angle mixture with dense arcs and sparse background.
+- `circle_outliers`: random-angle circle with a fixed fraction of strong radial outliers.
+
+### Noise levels
+
+- `sigma = 0.02, 0.05, 0.10, 0.20, 0.30`
+- `0.02` treated as edge-case sanity check.
+
+### Replicate allocation
+
+- `sigma = 0.02`: fewer replicates (`n_replicates_edge`).
+- `sigma >= 0.05`: more replicates (`n_replicates_main`).
+
+This allocation concentrates effort on realistic-noise regimes.
+
+## CV Protocol
+
+- 5-fold CV over rows.
+- 5 repeated fold assignments per replicate.
+- For each split, training rows are passed through `y.vertices` in `gflowx::refit.rdgraph.regression()`.
+
+## Tuned Hyperparameters
+
+- `k`: `5, 7, 9, ..., 35`
+- `n.eigenpairs`: `25, 50, 100`
+- `eta`: 12 log-spaced values from `1e-3` to `2.0`
+
+## Fixed Smoother Settings
+
+- `filter.type = "heat_kernel"`
+- `use.counting.measure = TRUE`
+- `response.penalty.exp = 0`
+- `t.scale.factor = 0.5`
+- `beta.coef.factor = 0.1`
+- pruning controls:
+  - `max.path.edge.ratio.deviation.thld = 0.1`
+  - `path.edge.ratio.percentile = 0.5`
+  - `threshold.percentile = 0`
+
+## Disconnected Graph Policy
+
+Connectivity is pre-screened across the `k` grid.
+
+Default policy: `connectivity_policy = "largest_component"`
+
+- If graph is connected at `k`, fit normally on all rows.
+- If disconnected, use LCC fit only when both hold:
+  - `lcc_frac >= lcc_min_fraction`
+  - `lcc_size >= lcc_min_total_vertices`
+- Otherwise candidate is marked `graph_disconnected` and skipped.
+
+When LCC fit is used:
+
+- smoothing model is trained on LCC rows,
+- held-out rows outside LCC are treated as unsmoothed identity predictions,
+- outputs store `modeled_fraction` to make partial-coverage explicit.
+
+## Selection Rule
+
+Per replicate and scenario (`dgp_id`, `sigma`):
+
+1. `min`: minimum mean scaled CV loss.
+2. `one_se`: among candidates within one SE of `min`, pick simpler by:
+   - lower `n.eigenpairs`,
+   - higher `k`,
+   - higher `eta`.
+
+## Oracle Diagnostics (not used for selection)
+
+- `rmse_xy_hat`
+- `rmse_rad_hat`
+- `var_ratio_mean`
+
+Baselines:
+
+- observed/no smoothing,
+- `data.smoother()` default.
+
+## Implementation
+
+Runner script:
+
+- `tests/manual/denoising_noisy_circle_cv_phase2.R`
+
+Analysis script:
+
+- `tests/manual/analyze_noisy_circle_cv_phase2_run.R`
+
+## Output Structure
+
+Each run writes to:
+
+- `tests/manual/results/noisy_circle_cv_phase2/<run_id>/`
+
+Key tables:
+
+- `tables/cv_fold_scores.csv`
+- `tables/cv_candidate_summary.csv`
+- `tables/selection_by_replicate.csv`
+- `tables/oracle_metrics_by_replicate.csv`
+- `tables/selected_params_by_dgp_sigma.csv`
+
+Analysis outputs:
+
+- `analysis/tables/*.csv`
+- `analysis/figures/*.png`
+
+## Notes for Next Iteration
+
+Planned follow-up after first full phase-2 run:
+
+1. Compare strict vs LCC policies directly.
+2. Add uncertainty intervals for method deltas.
+3. Evaluate whether LCC thresholds should depend on DGP/noise regime.

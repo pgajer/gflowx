@@ -130,22 +130,10 @@ data.smoother <- function(
     ## Helpers
     ## -------------------------------------------------------------------------
 
-    if (!requireNamespace("gflow", quietly = TRUE)) {
-        stop("data.smoother() currently requires gflow for its legacy graph ",
-             "construction and rdgraph-regression backend.", call. = FALSE)
-    }
-
     .is.int.scalar <- function(x) is.numeric(x) && length(x) == 1 && is.finite(x) && x == floor(x)
 
-    .normalize.knn.cache.path <- function(knn.cache.path, knn.cache.mode) {
-        utils::getFromNamespace(".normalize.knn.cache.path", "gflow")(
-            knn.cache.path,
-            knn.cache.mode
-        )
-    }
-
     .create.iknn.graphs <- function(...) {
-        gflow::create.iknn.graphs(...)
+        dgraphs::create.iknn.graphs(...)
     }
 
     .largest.cc.indices <- function(adj.list) {

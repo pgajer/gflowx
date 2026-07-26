@@ -1,0 +1,43 @@
+CXX_STD = CXX17
+
+PKG_CPPFLAGS = -I. -I../inst/include/gflow -I../inst/include -IANN \
+	-DDLL_API= -DR_NO_REMAP -D_Alignof=__alignof__ \
+	-DEIGEN_DONT_PARALLELIZE -DGFLOW_ALLOW_NO_OPENMP \
+	-include ../inst/include/gflow/eigen_config.hpp
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+OBJECTS = \
+	RcppExports.o \
+	SEXP_cpp_conversion_utils.o \
+	kNN.o \
+	laplacian_bundle.o \
+	mean_shift_smoother.o \
+	mean_shift_smoother_rcpp.o \
+	progress_utils.o \
+	riem_dcx.o \
+	riem_dcx_basins.o \
+	riem_dcx_coboundary.o \
+	riem_dcx_initialization.o \
+	riem_dcx_posterior_r.o \
+	riem_dcx_regression.o \
+	riem_dcx_regression_r.o \
+	riem_dcx_tie_breaking.o \
+	ulogit.o \
+	archive_stats_utils.o \
+	init.o \
+	kernels.o \
+	ANN/ANN.o \
+	ANN/bd_fix_rad_search.o \
+	ANN/bd_pr_search.o \
+	ANN/bd_search.o \
+	ANN/bd_tree.o \
+	ANN/kd_dump.o \
+	ANN/kd_fix_rad_search.o \
+	ANN/kd_pr_search.o \
+	ANN/kd_search.o \
+	ANN/kd_split.o \
+	ANN/kd_tree.o \
+	ANN/kd_util.o
+
+$(SHLIB): $(OBJECTS)
