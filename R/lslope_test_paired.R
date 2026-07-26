@@ -156,9 +156,6 @@ lslope.test <- function(fitted.model,
         "gflow", "lslope", api = "lslope.test()",
         install_hint = "Install gflow to evaluate local-slope statistics."
     )
-    boxcox.fun <- .gflowx.get.namespace.export(
-        "gflow", "boxcox.mle", api = "lslope.test()"
-    )
     weighted.p.fun <- .gflowx.get.namespace.export(
         "gflow", "weighted.p.value", api = "lslope.test()"
     )
@@ -395,7 +392,7 @@ lslope.test <- function(fitted.model,
 
             ## Box-Cox transformation
             bc.fit <- tryCatch(
-                boxcox.fun(diff.for.bc ~ 1),
+                .gflowx.boxcox.mle(diff.for.bc ~ 1),
                 error = function(e) NULL
             )
 
