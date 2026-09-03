@@ -1,0 +1,16 @@
+test_that("pipeline renderer uses canonical ivue and saves after rendering", {
+    skip_if_not_installed("ivue")
+    skip_if_not_installed("rgl")
+    X <- matrix(1:12, ncol = 3)
+    file <- tempfile(fileext = ".html")
+    on.exit(unlink(c(file, sub(".html$", "_files", file)), recursive = TRUE))
+    w <- .gflowx.render.ivue("cont", list(X = X, values = c(-2, -1, 1, 2),
+        point.size = 5, output.file = file, selfcontained = FALSE))
+    expect_s3_class(w, "htmlwidget")
+    expect_true(file.exists(file))
+    expect_equal(attr(w, "ivue")$mapping$scale$mode, "binned")
+    expect_gt(length(unique(attr(w, "ivue")$colors)), 1)
+    expect_s3_class(.gflowx.render.ivue("cltrs", list(X = X, groups = c("a", "b", "a", "b"))), "htmlwidget")
+    expect_s3_class(.gflowx.render.ivue("plain", list(X = X, point.type = "sphere", sphere.radius = 0.1)), "htmlwidget")
+    expect_error(.gflowx.render.ivue("cont", list(X = X, values = 1:4, size = 2)), "scene controls")
+})

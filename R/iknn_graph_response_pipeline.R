@@ -38,12 +38,17 @@
 #'   connected-graph case. \code{X}, \code{y}, and \code{k} are injected by this
 #'   wrapper and take precedence.
 #' @param plain.plot.args Named list passed to
-#'   \code{gflow::plot3D.plain.widget()}.
+#'   \code{ivue::plot3D.plain()}. Uses the ivue argument names, including
+#'   \code{point.size}, \code{point.type}, and \code{sphere.radius}.
 #' @param cltr.plot.args Named list passed to
-#'   \code{gflow::plot3D.cltrs.widget()}
+#'   \code{ivue::plot3D.cltrs()}
 #'   for the multi-component whole-graph plot.
 #' @param cont.plot.args Named list passed to
-#'   \code{gflow::plot3D.cont.widget()}.
+#'   \code{ivue::plot3D.cont()}. Binned rainbow colors are selected explicitly
+#'   unless a scale is supplied. Use \code{values}, not the retired \code{y}.
+#'   All three plotting lists may also contain \code{output.file},
+#'   \code{selfcontained}, and \code{open.browser}, handled by this pipeline
+#'   after widget creation, not passed to ivue.
 #' @param multi.comp.plot Plot mode used when selected graph has multiple
 #'   connected components: \code{"cltrs"} (default) for component-colored whole-graph
 #'   plot, \code{"plain"} for whole-graph plain plot, or \code{"both"}.
@@ -129,23 +134,9 @@ iknn.graph.response.pipeline <- function(
         install_hint = "Install it first (e.g. remotes::install_github('pgajer/grip'))."
     )
 
-    get.gflow.fn <- function(name) {
-        if (exists(name, mode = "function", inherits = TRUE)) {
-            return(get(name, mode = "function", inherits = TRUE))
-        }
-        if (requireNamespace("gflow", quietly = TRUE) &&
-            exists(name, envir = asNamespace("gflow"), inherits = FALSE)) {
-            return(get(name, envir = asNamespace("gflow"), inherits = FALSE))
-        }
-        stop("Function not found: ", name)
-    }
-
     f.build <- dgraphs::build.iknn.graphs.and.selectk
     f.cc <- dgraphs::graph.connected.components
     f.fit <- fit.rdgraph.regression
-    f.plot.plain <- get.gflow.fn("plot3D.plain.widget")
-    f.plot.cltrs <- get.gflow.fn("plot3D.cltrs.widget")
-    f.plot.cont <- get.gflow.fn("plot3D.cont.widget")
     multi.comp.plot <- match.arg(multi.comp.plot)
 
     if (!is.matrix(X)) {
@@ -510,7 +501,8 @@ iknn.graph.response.pipeline <- function(
 
             y.plot <- as.double(fit.obj$fitted.values) - mean(y.comp)
             cont.args <- utils::modifyList(
-                list(X = layout.3d, y = y.plot, legend.title = "fitted(y)-mean(y)"),
+                list(X = layout.3d, values = y.plot, point.type = "sphere",
+                     legend.title = "fitted(y)-mean(y)"),
                 cont.plot.args
             )
             if (is.null(cont.args$output.file) && !is.null(out.dir)) {
@@ -523,7 +515,7 @@ iknn.graph.response.pipeline <- function(
                 html.file <- as.character(cont.args$output.file %or% NA_character_)
             }
 
-            html.obj <- do.call(f.plot.cont, cont.args)
+            html.obj <- .gflowx.render.ivue("cont", cont.args)
         }
 
         saved.files[paste0("layout_", comp.tag)] <- save.object(layout.3d, paste0("layout_", comp.tag))
@@ -562,7 +554,7 @@ iknn.graph.response.pipeline <- function(
             cltr.args <- utils::modifyList(
                 list(
                     X = layout.multi,
-                    cltr = cltr.vec,
+                    groups = cltr.vec,
                     legend.title = "Connected Component"
                 ),
                 cltr.plot.args
@@ -576,7 +568,7 @@ iknn.graph.response.pipeline <- function(
                 )
                 cltr.args$output.file <- cltr.file
             }
-            html.cltr <- do.call(f.plot.cltrs, cltr.args)
+            html.cltr <- .gflowx.render.ivue("cltrs", cltr.args)
             html.objects[[length(html.objects) + 1L]] <- html.cltr
             names(html.objects)[[length(html.objects)]] <- cltr.tag
             saved.files[paste0("html_widget_", cltr.tag)] <- save.object(html.cltr, paste0("html_widget_", cltr.tag))
@@ -594,7 +586,7 @@ iknn.graph.response.pipeline <- function(
                 )
                 plain.args$output.file <- plain.file
             }
-            html.plain <- do.call(f.plot.plain, plain.args)
+            html.plain <- .gflowx.render.ivue("plain", plain.args)
             html.objects[[length(html.objects) + 1L]] <- html.plain
             names(html.objects)[[length(html.objects)]] <- plain.tag
             saved.files[paste0("html_widget_", plain.tag)] <- save.object(html.plain, paste0("html_widget_", plain.tag))

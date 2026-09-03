@@ -47,21 +47,26 @@ If \code{build.args$kmin}/\code{build.args$kmax} are provided, top-level
 \item{grip.args}{Named list passed to \code{grip::grip.layout()}.
 Defaults are:
 \code{dim=3L, rounds=200, final_rounds=200, num_init=10, num_nbrs=30,
-  r=0.1, s=1.0, tinit_factor=6, seed=6L}.}
+r=0.1, s=1.0, tinit_factor=6, seed=6L}.}
 
 \item{fit.args}{Named list passed to \code{fit.rdgraph.regression()} in the
 connected-graph case. \code{X}, \code{y}, and \code{k} are injected by this
 wrapper and take precedence.}
 
 \item{plain.plot.args}{Named list passed to
-\code{gflow::plot3D.plain.widget()}.}
+\code{ivue::plot3D.plain()}. Uses the ivue argument names, including
+\code{point.size}, \code{point.type}, and \code{sphere.radius}.}
 
 \item{cltr.plot.args}{Named list passed to
-\code{gflow::plot3D.cltrs.widget()}
+\code{ivue::plot3D.cltrs()}
 for the multi-component whole-graph plot.}
 
 \item{cont.plot.args}{Named list passed to
-\code{gflow::plot3D.cont.widget()}.}
+\code{ivue::plot3D.cont()}. Binned rainbow colors are selected explicitly
+unless a scale is supplied. Use \code{values}, not the retired \code{y}.
+All three plotting lists may also contain \code{output.file},
+\code{selfcontained}, and \code{open.browser}, handled by this pipeline
+after widget creation, not passed to ivue.}
 
 \item{multi.comp.plot}{Plot mode used when selected graph has multiple
 connected components: \code{"cltrs"} (default) for component-colored whole-graph
