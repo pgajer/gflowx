@@ -177,7 +177,25 @@ iknn.graph.response.pipeline <- function(
     if (!is.null(out.dir)) {
         out.dir <- path.expand(out.dir)
         dir.create(out.dir, recursive = TRUE, showWarnings = FALSE)
+        out.dir <- normalizePath(out.dir, winslash = "/", mustWork = TRUE)
     }
+
+    # Resolve user paths before the temporary graphics working directory.
+    resolve.plot.path <- function(args) {
+        file <- args$output.file
+        if (!is.null(file)) {
+            if (!is.character(file) || length(file) != 1L || is.na(file) || !nzchar(file))
+                stop("output.file must be one nonempty path.", call. = FALSE)
+            file <- path.expand(file)
+            dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+            args$output.file <- file.path(normalizePath(dirname(file), winslash = "/",
+                                                       mustWork = TRUE), basename(file))
+        }
+        args
+    }
+    plain.plot.args <- resolve.plot.path(plain.plot.args)
+    cltr.plot.args <- resolve.plot.path(cltr.plot.args)
+    cont.plot.args <- resolve.plot.path(cont.plot.args)
 
     old.wd <- getwd()
     tmp.wd <- NULL
