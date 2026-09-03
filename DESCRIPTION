@@ -26,7 +26,7 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
-    ivue (>= 0.0.0.9001),
+    ivue (>= 0.1.0),
     htmlwidgets,
     doParallel,
     foreach,

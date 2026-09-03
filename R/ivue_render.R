@@ -1,14 +1,15 @@
 .gflowx.render.ivue <- function(kind, args) {
     if (!requireNamespace("ivue", quietly = TRUE) ||
-        utils::packageVersion("ivue") < "0.0.0.9001") {
-        stop("Install ivue >= 0.0.0.9001 for pipeline plotting.", call. = FALSE)
+        utils::packageVersion("ivue") < "0.1.0" ||
+        !"plot3D.groups" %in% getNamespaceExports("ivue")) {
+        stop("Install current ivue >= 0.1.0 with plot3D.groups support for pipeline plotting.", call. = FALSE)
     }
     file <- args$output.file
     selfcontained <- if (is.null(args$selfcontained)) TRUE else args$selfcontained
     open.browser <- isTRUE(args$open.browser)
     args[c("output.file", "selfcontained", "open.browser")] <- NULL
     fun <- switch(kind, plain = ivue::plot3D.plain,
-                  cont = ivue::plot3D.cont, cltrs = ivue::plot3D.cltrs,
+                  cont = ivue::plot3D.cont, cltrs = ivue::plot3D.groups,
                   stop("Unknown pipeline plot kind.", call. = FALSE))
     if (identical(kind, "cont") && is.null(args$scale)) {
         args$scale <- ivue::color.scale.cont(args$values, mode = "binned",

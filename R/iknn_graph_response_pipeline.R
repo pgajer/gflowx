@@ -41,7 +41,7 @@
 #'   \code{ivue::plot3D.plain()}. Uses the ivue argument names, including
 #'   \code{point.size}, \code{point.type}, and \code{sphere.radius}.
 #' @param cltr.plot.args Named list passed to
-#'   \code{ivue::plot3D.cltrs()}
+#'   \code{ivue::plot3D.groups()}
 #'   for the multi-component whole-graph plot.
 #' @param cont.plot.args Named list passed to
 #'   \code{ivue::plot3D.cont()}. Binned rainbow colors are selected explicitly

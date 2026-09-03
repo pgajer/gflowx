@@ -58,7 +58,7 @@ wrapper and take precedence.}
 \code{point.size}, \code{point.type}, and \code{sphere.radius}.}
 
 \item{cltr.plot.args}{Named list passed to
-\code{ivue::plot3D.cltrs()}
+\code{ivue::plot3D.groups()}
 for the multi-component whole-graph plot.}
 
 \item{cont.plot.args}{Named list passed to
